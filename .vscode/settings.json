@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "sdkconfig.h": "c"
+    },
+    "cmake.configureOnOpen": false
+}
