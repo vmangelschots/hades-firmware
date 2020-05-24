@@ -1,6 +1,7 @@
 {
     "files.associations": {
-        "sdkconfig.h": "c"
+        "sdkconfig.h": "c",
+        "string": "cpp"
     },
     "cmake.configureOnOpen": false
 }
