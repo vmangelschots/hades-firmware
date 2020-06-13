@@ -25,10 +25,10 @@ static void parse_commands(char* data){
         xEventGroupClearBits(get_status_bits_handle(), ERROR_BIT);
     }
     else if(!strcmp(data,"setmode remote")){
-        
+        //TODO: set heater to remote mode
     }
     else if(!strcmp(data,"setmode local")){
-        
+        //TODO: set heater to local mode
     }
     else{
         ESP_LOGW(TAG,"Unkown command %s",data);
