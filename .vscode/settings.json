@@ -1,7 +1,12 @@
 {
     "files.associations": {
         "sdkconfig.h": "c",
-        "string": "cpp"
+        "string": "cpp",
+        "array": "c",
+        "string_view": "c",
+        "chrono": "c",
+        "*.ipp": "c",
+        "system_error": "c"
     },
     "cmake.configureOnOpen": false
 }

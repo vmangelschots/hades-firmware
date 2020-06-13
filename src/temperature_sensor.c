@@ -16,12 +16,15 @@
 
 #define TAG "temperature_sensor"
 
-
+int unkown_name_counter=0;
+float last_readings[4];
 struct temp_sensors_t
 {
     OneWireBus * owb;
     OneWireBus_ROMCode * rom_codes;   // a pointer to an *array* of ROM codes
     DS18B20_Info ** ds18b20_infos;
+    char ** names;
+    sensor_slot * slots;
     int num_ds18b20s;
 };
 
@@ -61,17 +64,53 @@ static int find_owb_rom_codes(const OneWireBus * owb, OneWireBus_ROMCode * rom_c
     return num_devices;
 }
 
+static sensor_slot get_sensor_slot(OneWireBus_ROMCode code,char * name){
+    sensor_slot slot = unkown_sensor;
+    char * rom_code_str =calloc(sizeof(char),17);
+    
+    owb_string_from_rom_code(code, rom_code_str, sizeof(char)*17);
+    if(strcmp(rom_code_str,water_in_rom)==0){
+        strcpy(name,"water_in");
+        slot = water_in;
+    }
+    else if(strcmp(rom_code_str,water_out_rom)==0){
+        strcpy(name,"water_out");
+        slot = water_out;
+    }
+    else if(strcmp(rom_code_str,inside_rom)==0){
+        strcpy(name,"inside");
+        slot = inside;
+    }
+    else if(strcmp(rom_code_str,outside_rom)==0){
+        strcpy(name,"outside");
+        slot = outside;
+    }
+    else{
+        ESP_LOGD(TAG,"Could not map sensor with code %s",rom_code_str);
+        sprintf(name,"UT%d",unkown_name_counter);
+        unkown_name_counter++;
+
+    }
+    free(rom_code_str);
+   
+    return slot;
+}
 static void associate_ds18b20_devices(const OneWireBus * owb,
                                       const OneWireBus_ROMCode * rom_codes,
                                       DS18B20_Info ** device_infos,
+                                      char ** names,
+                                      sensor_slot * slots,
                                       int num_devices)
 {
     ESP_LOGD(TAG, "%s", __FUNCTION__);
-    for (int i = 0; i < num_devices; ++i)
+    for (int i = 0; 
+    i < num_devices; ++i)
     {
         DS18B20_Info * ds18b20_info = ds18b20_malloc();
         device_infos[i] = ds18b20_info;
-
+        names[i]  = malloc(sizeof(char)*32);
+        slots[i] = get_sensor_slot(rom_codes[i],names[i]);
+        ESP_LOGD(TAG,"Found sensor %s",names[i]);
         if (num_devices == 1)
         {
             ESP_LOGD(TAG, "Single device optimisations enabled");
@@ -92,7 +131,8 @@ static temp_sensors_t * detect_sensors(uint8_t gpio)
     // set up the One Wire Bus
     OneWireBus * owb = NULL;
     temp_sensors_t * sensors = NULL;
-    
+    char ** names = malloc(sizeof(char*)* MAX_DEVICES);
+    sensor_slot * slots = malloc(sizeof(sensor_slot)*MAX_DEVICES);
     owb_rmt_driver_info * rmt_driver_info = malloc(sizeof(*rmt_driver_info));
 
     // TODO: Need to keep hold of rmt_driver_info so we can free it later
@@ -113,7 +153,7 @@ static temp_sensors_t * detect_sensors(uint8_t gpio)
         // associate devices on bus with DS18B20 device driver
         DS18B20_Info ** device_infos = calloc(num_devices, sizeof(*device_infos));
 
-        associate_ds18b20_devices(owb, device_rom_codes, device_infos, num_devices);
+        associate_ds18b20_devices(owb, device_rom_codes, device_infos, names, slots, num_devices);
 
         sensors = malloc(sizeof(*sensors));
         if (sensors)
@@ -122,6 +162,8 @@ static temp_sensors_t * detect_sensors(uint8_t gpio)
             sensors->owb = owb;
             sensors->rom_codes = device_rom_codes;
             sensors->ds18b20_infos = device_infos;
+            sensors->names = names;
+            sensors->slots = slots;
             sensors->num_ds18b20s = num_devices;
         }
         else
@@ -162,22 +204,29 @@ static void sensor_task(void * pvParameter){
     
     task_inputs_t * task_inputs = (task_inputs_t *)pvParameter;
 
-    /*wait a couple of seconds before we start measuring¨*/
+    /*get the rom_code_match*/
 
+    /*wait a couple of seconds before we start measuring¨*/
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     last_wake_time = xTaskGetTickCount();
-    
+    sensor_readings_t * result = malloc(sizeof(sensor_readings_t));
     for(;;){
         ESP_LOGI(TAG,"reading sensors");
         float readings[MAX_DEVICES] = { 0 };
         DS18B20_ERROR errors[MAX_DEVICES] = { 0 };
         read_temperatures(task_inputs->sensors->ds18b20_infos, readings, errors, task_inputs->sensors->num_ds18b20s);
-        for(int i = 0; i <MAX_DEVICES; i++){
+        for(int i = 0; i <task_inputs->sensors->num_ds18b20s; i++){
             if(errors[i]== DS18B20_OK){
-                sensor_readings_t * result = malloc(sizeof(sensor_readings_t));
-                sprintf(result->name,"T%d",i);
+                /*keep the readings for internal use*/
+                if(task_inputs->sensors->slots[i] != unkown_sensor){
+                    last_readings[task_inputs->sensors->slots[i]] = readings[i];
+                }
+
+                /* send to mqtt for processing*/
+                strcpy(result->name, task_inputs->sensors->names[i]);
                 result->reading = readings[i];
-                ESP_LOGI(TAG,"  T%d: %.1f",i,readings[i]);
+                result->rom_code = &task_inputs->sensors->ds18b20_infos[i]->rom_code;
+                ESP_LOGI(TAG,"%s: %.1f",task_inputs->sensors->names[i],readings[i]);
                 xQueueSend(task_inputs->queue,result,pdMS_TO_TICKS(10000));
             }
             else{
@@ -200,3 +249,9 @@ void init_temperature_sensors(uint8_t owb_pin,QueueHandle_t queue){
     task_inputs->queue= queue;
     xTaskCreate(&sensor_task,"temp_sensor_task",4096,task_inputs,15,&_task_handle);
 }
+
+float get_sensor_reading(sensor_slot slot){
+    return last_readings[slot];
+}
+
+ 

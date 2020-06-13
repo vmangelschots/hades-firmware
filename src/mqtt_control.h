@@ -3,5 +3,5 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-void init_mqtt(QueueHandle_t queue);
+void init_mqtt(QueueHandle_t queue,QueueHandle_t heater_status_queue);
 #endif
