@@ -6,7 +6,8 @@
         "string_view": "c",
         "chrono": "c",
         "*.ipp": "c",
-        "system_error": "c"
+        "system_error": "c",
+        "random": "c"
     },
     "cmake.configureOnOpen": false
 }

@@ -57,7 +57,7 @@ static const char* TAG = "Main";
         ESP_LOGI(TAG, "The current date/time: %s", strftime_buf);
         /*create message queue between sensors and mqtt*/
         QueueHandle_t sensor_mqtt_queue = xQueueCreate( 12, sizeof(sensor_readings_t));
-        QueueHandle_t heater_status_queue = xQueueCreate(12,sizeof(bool));
+        QueueHandle_t heater_status_queue = xQueueCreate(12,sizeof(status_message_t));
         init_temperature_sensors(OWB_PIN,sensor_mqtt_queue);
         init_mqtt(sensor_mqtt_queue,heater_status_queue);
 

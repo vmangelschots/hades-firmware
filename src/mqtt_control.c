@@ -5,6 +5,7 @@
 #include "owb.h"
 #include "status_led.h"
 
+
 #define TAG "mqtt"
 
 bool mqtt_connected = false;
@@ -16,22 +17,10 @@ typedef struct task_inputs_t{
     QueueHandle_t status_queue;
 } task_inputs_t;
 
-static void parse_commands(char* data){
-    ESP_LOGD(TAG,"i would now process %s",data);
-    if(!strcmp(data,"set_error")){
-        xEventGroupSetBits(get_status_bits_handle(), ERROR_BIT);
-    }
-    else if(!strcmp(data,"clear_error")){
-        xEventGroupClearBits(get_status_bits_handle(), ERROR_BIT);
-    }
-    else if(!strcmp(data,"setmode remote")){
-        
-    }
-    else if(!strcmp(data,"setmode local")){
-        
-    }
-    else{
-        ESP_LOGW(TAG,"Unkown command %s",data);
+
+static void parse_mode(char* data){
+    if(strcmp(data,"remote")==0){
+
     }
 }
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
@@ -45,7 +34,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             msg_id = esp_mqtt_client_publish(client, "/hades/status", "online", 0, 1, 0);
             ESP_LOGD(TAG, "sent publish successful, msg_id=%d", msg_id);
 
-            msg_id = esp_mqtt_client_subscribe(client, "/hades/commands", 0);
+            msg_id = esp_mqtt_client_subscribe(client, "/hades/mode", 0);
 
             // msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
             // ESP_LOGD(TAG, "sent subscribe successful, msg_id=%d", msg_id);
@@ -80,8 +69,8 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             memcpy(&ldata,event->data,event->data_len);
             ltopic[event->topic_len] = '\0';
             ldata[event->data_len] = '\0';
-            if(strcmp(ltopic,"/hades/commands")==0){
-                parse_commands(ldata);
+            if(strcmp(ltopic,"/hades/mode")==0){
+                parse_mode(ldata);
             }
             else{
                 ESP_LOGD(TAG,"Could not parse command %s",ltopic);
@@ -137,28 +126,26 @@ static void sensor_readings_sender_task(void * pvParameter){
 static void heater_status_sender_task(void * pvParameter){
     task_inputs_t * task_inputs = (task_inputs_t *)pvParameter;
     QueueHandle_t status_queue= task_inputs->status_queue;
-    int * heater_status = malloc(sizeof(int*));
     char  * message = calloc(256,sizeof(char));
+    char * topic = calloc(256, sizeof(char));
+    status_message_t * status_message = malloc(sizeof(status_message_t));
     for(;;){
-        switch(xQueueReceive(status_queue,heater_status,pdMS_TO_TICKS(10000))){
+        switch(xQueueReceive(status_queue,status_message,pdMS_TO_TICKS(10000))){
+            strcpy(message,status_message->data);
+            strcpy(topic,status_message->topic);
             case(pdPASS):
                 if(!client || !mqtt_connected){
                     ESP_LOGW(TAG,"MQTT not connected. sensor status discared");
                 }
                 else{
-                    if(*heater_status){
-                        strcpy(message,"on");
-                    }
-                    else{
-                        strcpy(message,"off");
-                    }
-                        esp_mqtt_client_publish(client, "/hades/heater_status",message , 0, 1, 0);
-                        ESP_LOGD(TAG,"%s send",message);    
+                        esp_mqtt_client_publish(client,topic , message, 0, 1, 0);
+                        ESP_LOGD(TAG,"%s send to %s",message, topic );    
                 }
                 break;
             case(errQUEUE_EMPTY):
                 ESP_LOGD(TAG,"No readings to send");
         }
+
     }
 }
 void init_mqtt(QueueHandle_t queue,QueueHandle_t heater_status_queue){

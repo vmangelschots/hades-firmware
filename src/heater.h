@@ -11,4 +11,5 @@
 
 void init_heater(QueueHandle_t queue);
 static void set_heater(int on);
+void setMode(bool mode);
 #endif
